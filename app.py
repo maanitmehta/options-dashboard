@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, Input, Output, State, ctx
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import numpy as np
@@ -17,30 +17,55 @@ from mc_plot import plot_mc_paths, plot_mc_convergence
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 app.title = "Options Pricing Dashboard"
 server = app.server
+
+
 sidebar = dbc.Card([
     html.H5("Parameters", className="mb-3"),
+
     dbc.Label("Ticker"),
     dbc.Input(id="ticker", value="AAPL", type="text", className="mb-2"),
+
+    html.Div([
+        dbc.Button("AAPL", id="btn-aapl", color="light", size="sm", className="me-1 mb-1"),
+        dbc.Button("MSFT", id="btn-msft", color="light", size="sm", className="me-1 mb-1"),
+        dbc.Button("TSLA", id="btn-tsla", color="light", size="sm", className="me-1 mb-1"),
+        dbc.Button("NVDA", id="btn-nvda", color="light", size="sm", className="me-1 mb-1"),
+        dbc.Button("SPY",  id="btn-spy",  color="light", size="sm", className="me-1 mb-1"),
+        dbc.Button("AMZN", id="btn-amzn", color="light", size="sm", className="me-1 mb-1"),
+    ], className="mb-2"),
+
     dbc.Label("Expiry"),
     dcc.Dropdown(id="expiry-dropdown", placeholder="Load expiries first", className="mb-2"),
+
     dbc.Button("Load Market Data", id="load-btn", color="primary", className="mb-3 w-100"),
+
     html.Hr(),
+
     dbc.Label("Spot Price (S)"),
     dbc.Input(id="spot", type="number", value=100, step=1, className="mb-2"),
+
     dbc.Label("Strike Price (K)"),
     dbc.Input(id="strike", type="number", value=100, step=1, className="mb-2"),
+
+    html.Div(id="moneyness-label", className="mb-2",
+             style={"fontSize": "12px", "color": "gray"}),
+
     dbc.Label("Time to Expiry (years)"),
     dbc.Input(id="T", type="number", value=0.25, step=0.01, className="mb-2"),
+
     dbc.Label("Risk-Free Rate"),
     dbc.Input(id="rate", type="number", value=0.05, step=0.001, className="mb-2"),
+
     dbc.Label("Volatility (σ)"),
     dbc.Input(id="sigma", type="number", value=0.20, step=0.01, className="mb-2"),
+
     dbc.Label("Option Type"),
     dbc.RadioItems(
         id="option-type",
         options=[{"label": "Call", "value": "call"}, {"label": "Put", "value": "put"}],
         value="call", inline=True, className="mb-3"
     ),
+
     dbc.Label("Payoff Strategy"),
     dbc.Select(
         id="strategy",
@@ -53,7 +78,11 @@ sidebar = dbc.Card([
         ],
         value="single", className="mb-3"
     ),
-    dbc.Button("Price Option", id="price-btn", color="success", className="w-100"),
+
+    dbc.Button("Price Option", id="price-btn", color="success", className="w-100 mb-2"),
+    dbc.Spinner(html.Div(id="loading-output"), color="success", size="sm"),
+    html.Div(id="error-msg", style={"color": "red", "fontSize": "12px", "marginTop": "8px"}),
+
 ], body=True, className="h-100")
 
 summary_cards = dbc.Row([
@@ -84,6 +113,55 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 
+# ── Ticker buttons ───────────────────────────────────────────────────────────
+
+@app.callback(
+    Output("ticker", "value"),
+    Input("btn-aapl", "n_clicks"),
+    Input("btn-msft", "n_clicks"),
+    Input("btn-tsla", "n_clicks"),
+    Input("btn-nvda", "n_clicks"),
+    Input("btn-spy",  "n_clicks"),
+    Input("btn-amzn", "n_clicks"),
+    prevent_initial_call=True
+)
+def set_ticker(*args):
+    button_map = {
+        "btn-aapl": "AAPL",
+        "btn-msft": "MSFT",
+        "btn-tsla": "TSLA",
+        "btn-nvda": "NVDA",
+        "btn-spy":  "SPY",
+        "btn-amzn": "AMZN",
+    }
+    return button_map.get(ctx.triggered_id, "AAPL")
+
+
+# ── Auto load on ticker change ───────────────────────────────────────────────
+
+@app.callback(
+    Output("expiry-dropdown", "options", allow_duplicate=True),
+    Output("expiry-dropdown", "value", allow_duplicate=True),
+    Output("spot", "value", allow_duplicate=True),
+    Output("rate", "value", allow_duplicate=True),
+    Input("ticker", "value"),
+    prevent_initial_call=True
+)
+def auto_load_on_ticker_change(ticker):
+    if not ticker or len(ticker) < 1:
+        return [], None, 100, 0.05
+    try:
+        expiries = get_available_expiries(ticker)
+        S = get_spot_price(ticker)
+        r = get_risk_free_rate()
+        options = [{"label": f"{e} ({(datetime.datetime.strptime(e, '%Y-%m-%d') - datetime.datetime.today()).days}d)", "value": e} for e in expiries[:12]]
+        return options, expiries[0], round(S, 2), round(r, 4)
+    except Exception:
+        return [], None, 100, 0.05
+
+
+# ── Load market data button ──────────────────────────────────────────────────
+
 @app.callback(
     Output("expiry-dropdown", "options"),
     Output("expiry-dropdown", "value"),
@@ -98,11 +176,50 @@ def load_market_data(n, ticker):
         expiries = get_available_expiries(ticker)
         S = get_spot_price(ticker)
         r = get_risk_free_rate()
-        options = [{"label": e, "value": e} for e in expiries[:12]]
+        options = [{"label": f"{e} ({(datetime.datetime.strptime(e, '%Y-%m-%d') - datetime.datetime.today()).days}d)", "value": e} for e in expiries[:12]]
         return options, expiries[0], round(S, 2), round(r, 4)
     except Exception:
         return [], None, 100, 0.05
 
+
+# ── Auto ATM strike ──────────────────────────────────────────────────────────
+
+@app.callback(
+    Output("strike", "value"),
+    Input("spot", "value"),
+    prevent_initial_call=True
+)
+def auto_atm_strike(spot):
+    if spot:
+        return round(float(spot))
+    return 100
+
+
+# ── Moneyness label ──────────────────────────────────────────────────────────
+
+@app.callback(
+    Output("moneyness-label", "children"),
+    Input("spot",   "value"),
+    Input("strike", "value"),
+    prevent_initial_call=True
+)
+def update_moneyness(spot, strike):
+    if not spot or not strike:
+        return ""
+    ratio = float(strike) / float(spot)
+    if ratio < 0.97:
+        label = "💰 ITM (In the Money)"
+        color = "green"
+    elif ratio > 1.03:
+        label = "❌ OTM (Out of the Money)"
+        color = "red"
+    else:
+        label = "🎯 ATM (At the Money)"
+        color = "orange"
+    return html.Span(label, style={"color": color, "fontWeight": "500"})
+
+
+# ── Update T from expiry ─────────────────────────────────────────────────────
 
 @app.callback(
     Output("T", "value"),
@@ -117,6 +234,8 @@ def update_T(expiry):
     return round(T, 4)
 
 
+# ── Price option ─────────────────────────────────────────────────────────────
+
 @app.callback(
     Output("bs-price",       "children"),
     Output("mc-price",       "children"),
@@ -129,6 +248,8 @@ def update_T(expiry):
     Output("greeks-3d-chart","figure"),
     Output("mc-chart",       "figure"),
     Output("mc-paths-chart", "figure"),
+    Output("loading-output", "children"),
+    Output("error-msg",      "children"),
     Input("price-btn", "n_clicks"),
     State("spot",        "value"),
     State("strike",      "value"),
@@ -140,30 +261,48 @@ def update_T(expiry):
     prevent_initial_call=True
 )
 def price_option(n, S, K, T, r, sigma, option_type, strategy):
-    S, K, T, r, sigma = float(S), float(K), float(T), float(r), float(sigma)
-    bs = black_scholes(S, K, T, r, sigma, option_type)
-    mc = monte_carlo_price(S, K, T, r, sigma, option_type)
-    gk = compute_greeks(S, K, T, r, sigma, option_type)
-    fig_payoff   = build_payoff_chart(S, K, T, r, sigma, option_type, strategy)
-    fig_g2d      = plot_greeks_2d(S, r, sigma, option_type, T)
-    figs_3d      = plot_greeks_surface(S, r, sigma, option_type)
-    fig_g3d      = figs_3d['delta']
-    fig_mc       = plot_mc_convergence(S, K, T, r, sigma, option_type)
-    fig_mc_paths = plot_mc_paths(S, K, T, r, sigma, option_type)
-    return (
-        f"${bs}",
-        f"${mc['price']} (±{round(mc['ci_upper'] - mc['price'], 4)})",
-        str(gk['delta']),
-        str(gk['gamma']),
-        str(gk['vega']),
-        str(gk['theta']),
-        fig_payoff,
-        fig_g2d,
-        fig_g3d,
-        fig_mc,
-        fig_mc_paths,
-    )
+    try:
+        S, K, T, r, sigma = float(S), float(K), float(T), float(r), float(sigma)
 
+        if T <= 0:
+            raise ValueError("Time to expiry must be greater than 0. Please select a future expiry date.")
+        if sigma <= 0:
+            raise ValueError("Volatility must be greater than 0.")
+        if S <= 0 or K <= 0:
+            raise ValueError("Spot and strike prices must be greater than 0.")
+
+        bs = black_scholes(S, K, T, r, sigma, option_type)
+        mc = monte_carlo_price(S, K, T, r, sigma, option_type)
+        gk = compute_greeks(S, K, T, r, sigma, option_type)
+
+        fig_payoff   = build_payoff_chart(S, K, T, r, sigma, option_type, strategy)
+        fig_g2d      = plot_greeks_2d(S, r, sigma, option_type, T)
+        figs_3d      = plot_greeks_surface(S, r, sigma, option_type)
+        fig_g3d      = figs_3d['delta']
+        fig_mc       = plot_mc_convergence(S, K, T, r, sigma, option_type)
+        fig_mc_paths = plot_mc_paths(S, K, T, r, sigma, option_type)
+
+        return (
+            f"${bs}",
+            f"${mc['price']} (±{round(mc['ci_upper'] - mc['price'], 4)})",
+            str(gk['delta']),
+            str(gk['gamma']),
+            str(gk['vega']),
+            str(gk['theta']),
+            fig_payoff,
+            fig_g2d,
+            fig_g3d,
+            fig_mc,
+            fig_mc_paths,
+            "",
+            "",
+        )
+    except Exception as e:
+        empty = go.Figure()
+        return "—", "—", "—", "—", "—", "—", empty, empty, empty, empty, empty, "", str(e)
+
+
+# ── IV charts ────────────────────────────────────────────────────────────────
 
 @app.callback(
     Output("iv-smile-chart",   "figure"),
