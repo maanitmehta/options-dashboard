@@ -57,14 +57,16 @@ sidebar = dbc.Card([
         placeholder="Search ticker...",
         className="mb-1"
     ),
-    dbc.Input(
+   dbc.Input(
         id="custom-ticker",
         placeholder="Or type any ticker e.g. BABA, RIO, VOD...",
         type="text",
         size="sm",
-        className="mb-2",
+        className="mb-1",
         style={"fontSize": "12px"}
     ),
+    html.Div(id="ticker-validation", className="mb-2",
+             style={"fontSize": "12px"}),
 
     dbc.Label("Expiry"),
     dcc.Dropdown(id="expiry-dropdown", placeholder="Load expiries first", className="mb-2"),
@@ -494,6 +496,42 @@ def export_csv(n, S, K, T, r, sigma, option_type, ticker):
     df = pd.DataFrame(data)
     return dcc.send_data_frame(df.to_csv, f"{ticker}_option_pricing.csv", index=False)
 
+@app.callback(
+    Output("ticker-validation", "children"),
+    Input("custom-ticker", "value"),
+    prevent_initial_call=True
+)
+def validate_ticker(custom):
+    if not custom or len(custom) < 1:
+        return ""
+    ticker = custom.upper().strip()
+    try:
+        S = get_spot_price(ticker)
+        expiries = get_available_expiries(ticker)
+        return html.Span(
+            f"✅ {ticker} — ${S:.2f}, {len(expiries)} expiries available",
+            style={"color": "green", "fontWeight": "500"}
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "No options" in msg:
+            try:
+                S = get_spot_price(ticker)
+                return html.Span(
+                    f"⚠️ {ticker} — ${S:.2f} but no options data",
+                    style={"color": "orange", "fontWeight": "500"}
+                )
+            except Exception:
+                pass
+        return html.Span(
+            f"❌ {ticker} — ticker not found",
+            style={"color": "red", "fontWeight": "500"}
+        )
+    except Exception:
+        return html.Span(
+            f"❌ {ticker} — ticker not found",
+            style={"color": "red", "fontWeight": "500"}
+        )
 
 if __name__ == '__main__':
     app.run(debug=True, port=8050)
