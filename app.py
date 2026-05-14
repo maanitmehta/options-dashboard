@@ -66,6 +66,21 @@ sidebar = dbc.Card([
         value="call", inline=True, className="mb-3"
     ),
 
+dbc.Label("Preset Strategies"),
+    html.Div([
+        dbc.Button("ATM Call",     id="pre-atm-call",     color="outline-primary", size="sm", className="me-1 mb-1"),
+        dbc.Button("ATM Put",      id="pre-atm-put",      color="outline-primary", size="sm", className="me-1 mb-1"),
+        dbc.Button("ATM Straddle", id="pre-straddle",     color="outline-secondary", size="sm", className="me-1 mb-1"),
+        dbc.Button("OTM Call",     id="pre-otm-call",     color="outline-success", size="sm", className="me-1 mb-1"),
+        dbc.Button("OTM Put",      id="pre-otm-put",      color="outline-success", size="sm", className="me-1 mb-1"),
+        dbc.Button("Bull Spread",  id="pre-bull-spread",  color="outline-warning", size="sm", className="me-1 mb-1"),
+        dbc.Button("Bear Spread",  id="pre-bear-spread",  color="outline-danger",  size="sm", className="me-1 mb-1"),
+    ], className="mb-3"),
+
+
+
+
+
     dbc.Label("Payoff Strategy"),
     dbc.Select(
         id="strategy",
@@ -323,6 +338,45 @@ def update_iv_charts(n, ticker, expiry):
         fig_surface = go.Figure()
     return fig_smile, fig_surface
 
+@app.callback(
+    Output("strike",      "value",    allow_duplicate=True),
+    Output("option-type", "value",    allow_duplicate=True),
+    Output("strategy",    "value",    allow_duplicate=True),
+    Output("T",           "value",    allow_duplicate=True),
+    Input("pre-atm-call",    "n_clicks"),
+    Input("pre-atm-put",     "n_clicks"),
+    Input("pre-straddle",    "n_clicks"),
+    Input("pre-otm-call",    "n_clicks"),
+    Input("pre-otm-put",     "n_clicks"),
+    Input("pre-bull-spread", "n_clicks"),
+    Input("pre-bear-spread", "n_clicks"),
+    State("spot", "value"),
+    prevent_initial_call=True
+)
+def apply_preset(*args):
+    spot = args[-1]
+    if not spot:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    S = float(spot)
+    atm = round(S)
+    otm_call = round(S * 1.05)
+    otm_put  = round(S * 0.95)
+
+    presets = {
+        "pre-atm-call":    (atm,      "call", "single",     0.25),
+        "pre-atm-put":     (atm,      "put",  "single",     0.25),
+        "pre-straddle":    (atm,      "call", "straddle",   0.25),
+        "pre-otm-call":    (otm_call, "call", "single",     0.25),
+        "pre-otm-put":     (otm_put,  "put",  "single",     0.25),
+        "pre-bull-spread": (atm,      "call", "bull_spread",0.25),
+        "pre-bear-spread": (atm,      "put",  "bear_spread",0.25),
+    }
+
+    preset = presets.get(ctx.triggered_id)
+    if preset:
+        return preset
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 if __name__ == '__main__':
     app.run(debug=True, port=8050)
