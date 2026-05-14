@@ -42,3 +42,4 @@ Python, Dash, Plotly, yfinance, scipy, numpy, pandas
 
 ## Author
 Maanit Mehta — MSc Financial Modelling & Investment, University of Glasgow
+# Options Pricing Dashboard
