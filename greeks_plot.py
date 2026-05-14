@@ -9,8 +9,8 @@ def plot_greeks_surface(S=100, r=0.05, sigma=0.20, option_type='call'):
     """
     3D surface plots for all 5 Greeks across strike and time-to-expiry.
     """
-    K_range = np.linspace(0.7 * S, 1.3 * S, 50)
-    T_range = np.linspace(0.01, 2.0, 50)
+    K_range = np.linspace(0.7 * S, 1.3 * S, 25)
+    T_range = np.linspace(0.01, 2.0, 25)
 
     K_grid, T_grid = np.meshgrid(K_range, T_range)
 
