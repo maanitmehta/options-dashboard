@@ -2,6 +2,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 from scipy.stats import norm
+from greeks import compute_greeks
 
 pio.renderers.default = "browser"
 
@@ -121,4 +122,4 @@ if __name__ == '__main__':
     figs_3d = plot_greeks_surface(S=100, r=0.05, sigma=0.20, option_type='call')
     for name, fig in figs_3d.items():
         print(f"  Showing {name}...")
-        fig.show()
+        fig.show() 
