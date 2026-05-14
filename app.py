@@ -24,16 +24,47 @@ sidebar = dbc.Card([
     html.H5("Parameters", className="mb-3"),
 
     dbc.Label("Ticker"),
-    dbc.Input(id="ticker", value="AAPL", type="text", className="mb-2"),
-
-    html.Div([
-        dbc.Button("AAPL", id="btn-aapl", color="light", size="sm", className="me-1 mb-1"),
-        dbc.Button("MSFT", id="btn-msft", color="light", size="sm", className="me-1 mb-1"),
-        dbc.Button("TSLA", id="btn-tsla", color="light", size="sm", className="me-1 mb-1"),
-        dbc.Button("NVDA", id="btn-nvda", color="light", size="sm", className="me-1 mb-1"),
-        dbc.Button("SPY",  id="btn-spy",  color="light", size="sm", className="me-1 mb-1"),
-        dbc.Button("AMZN", id="btn-amzn", color="light", size="sm", className="me-1 mb-1"),
-    ], className="mb-2"),
+    dcc.Dropdown(
+        id="ticker",
+        options=[
+            {"label": "AAPL — Apple",           "value": "AAPL"},
+            {"label": "MSFT — Microsoft",        "value": "MSFT"},
+            {"label": "TSLA — Tesla",            "value": "TSLA"},
+            {"label": "NVDA — Nvidia",           "value": "NVDA"},
+            {"label": "SPY — S&P 500 ETF",       "value": "SPY"},
+            {"label": "AMZN — Amazon",           "value": "AMZN"},
+            {"label": "GOOGL — Alphabet",        "value": "GOOGL"},
+            {"label": "META — Meta",             "value": "META"},
+            {"label": "BRK-B — Berkshire",       "value": "BRK-B"},
+            {"label": "JPM — JPMorgan",          "value": "JPM"},
+            {"label": "GS — Goldman Sachs",      "value": "GS"},
+            {"label": "BAC — Bank of America",   "value": "BAC"},
+            {"label": "QQQ — Nasdaq 100 ETF",    "value": "QQQ"},
+            {"label": "IWM — Russell 2000 ETF",  "value": "IWM"},
+            {"label": "GLD — Gold ETF",          "value": "GLD"},
+            {"label": "NFLX — Netflix",          "value": "NFLX"},
+            {"label": "AMD — AMD",               "value": "AMD"},
+            {"label": "INTC — Intel",            "value": "INTC"},
+            {"label": "DIS — Disney",            "value": "DIS"},
+            {"label": "UBER — Uber",             "value": "UBER"},
+            {"label": "COIN — Coinbase",         "value": "COIN"},
+            {"label": "PLTR — Palantir",         "value": "PLTR"},
+            {"label": "ARM — ARM Holdings",      "value": "ARM"},
+        ],
+        value="AAPL",
+        searchable=True,
+        clearable=False,
+        placeholder="Search ticker...",
+        className="mb-1"
+    ),
+    dbc.Input(
+        id="custom-ticker",
+        placeholder="Or type any ticker e.g. BABA, RIO, VOD...",
+        type="text",
+        size="sm",
+        className="mb-2",
+        style={"fontSize": "12px"}
+    ),
 
     dbc.Label("Expiry"),
     dcc.Dropdown(id="expiry-dropdown", placeholder="Load expiries first", className="mb-2"),
@@ -94,8 +125,8 @@ sidebar = dbc.Card([
         value="single", className="mb-3"
     ),
 
-    dbc.Button("Price Option", id="price-btn", color="success", className="w-100 mb-2"),
-    dbc.Button("Export CSV", id="btn-export-csv", color="outline-info", className="w-100 mb-2"),
+    dbc.Button("Price Option",  id="price-btn",      color="success",      className="w-100 mb-2"),
+    dbc.Button("Export CSV",    id="btn-export-csv", color="outline-info", className="w-100 mb-2"),
     dbc.Spinner(html.Div(id="loading-output"), color="success", size="sm"),
     html.Div(id="error-msg", style={"color": "red", "fontSize": "12px", "marginTop": "8px"}),
 
@@ -157,28 +188,17 @@ app.clientside_callback(
 )
 
 
-# ── Ticker buttons ───────────────────────────────────────────────────────────
+# ── Custom ticker input ──────────────────────────────────────────────────────
 
 @app.callback(
-    Output("ticker", "value"),
-    Input("btn-aapl", "n_clicks"),
-    Input("btn-msft", "n_clicks"),
-    Input("btn-tsla", "n_clicks"),
-    Input("btn-nvda", "n_clicks"),
-    Input("btn-spy",  "n_clicks"),
-    Input("btn-amzn", "n_clicks"),
+    Output("ticker", "value", allow_duplicate=True),
+    Input("custom-ticker", "value"),
     prevent_initial_call=True
 )
-def set_ticker(*args):
-    button_map = {
-        "btn-aapl": "AAPL",
-        "btn-msft": "MSFT",
-        "btn-tsla": "TSLA",
-        "btn-nvda": "NVDA",
-        "btn-spy":  "SPY",
-        "btn-amzn": "AMZN",
-    }
-    return button_map.get(ctx.triggered_id, "AAPL")
+def use_custom_ticker(custom):
+    if custom and len(custom) >= 1:
+        return custom.upper().strip()
+    return dash.no_update
 
 
 # ── Auto load on ticker change ───────────────────────────────────────────────
@@ -326,13 +346,13 @@ def apply_preset(*args):
     otm_put  = round(S * 0.95)
 
     presets = {
-        "pre-atm-call":    (atm,      "call", "single",      0.25),
-        "pre-atm-put":     (atm,      "put",  "single",      0.25),
-        "pre-straddle":    (atm,      "call", "straddle",    0.25),
-        "pre-otm-call":    (otm_call, "call", "single",      0.25),
-        "pre-otm-put":     (otm_put,  "put",  "single",      0.25),
-        "pre-bull-spread": (atm,      "call", "bull_spread",  0.25),
-        "pre-bear-spread": (atm,      "put",  "bear_spread",  0.25),
+        "pre-atm-call":    (atm,      "call", "single",     0.25),
+        "pre-atm-put":     (atm,      "put",  "single",     0.25),
+        "pre-straddle":    (atm,      "call", "straddle",   0.25),
+        "pre-otm-call":    (otm_call, "call", "single",     0.25),
+        "pre-otm-put":     (otm_put,  "put",  "single",     0.25),
+        "pre-bull-spread": (atm,      "call", "bull_spread", 0.25),
+        "pre-bear-spread": (atm,      "put",  "bear_spread", 0.25),
     }
 
     preset = presets.get(ctx.triggered_id)
