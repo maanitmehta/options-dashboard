@@ -1,19 +1,16 @@
 import yfinance as yf
 import pandas as pd
 
+
 def get_spot_price(ticker):
-    """Fetch current spot price for a ticker."""
     tk = yf.Ticker(ticker)
     hist = tk.history(period="1d")
     if hist.empty:
         raise ValueError(f"No price data found for {ticker}")
     return round(hist["Close"].iloc[-1], 4)
 
+
 def get_risk_free_rate():
-    """
-    Proxy for risk-free rate using 13-week T-bill yield (^IRX).
-    Returns rate as a decimal e.g. 0.05 for 5%.
-    """
     irx = yf.Ticker("^IRX")
     hist = irx.history(period="1d")
     if hist.empty:
@@ -21,13 +18,8 @@ def get_risk_free_rate():
         return 0.05
     return round(hist["Close"].iloc[-1] / 100, 4)
 
-def get_option_chain(ticker, expiry=None):
-    """
-    Fetch the full option chain for a ticker.
 
-    If expiry is None, uses the nearest available expiry.
-    Returns (calls_df, puts_df, expiry_used).
-    """
+def get_option_chain(ticker, expiry=None):
     tk = yf.Ticker(ticker)
     expirations = tk.options
 
@@ -48,10 +40,37 @@ def get_option_chain(ticker, expiry=None):
 
     return calls, puts, expiry
 
+
 def get_available_expiries(ticker):
-    """Return list of available expiry dates for a ticker."""
     tk = yf.Ticker(ticker)
     expirations = tk.options
     if not expirations:
         raise ValueError(f"No options data for {ticker}")
     return list(expirations)
+
+
+def get_atm_iv(ticker, expiry, option_type='call'):
+    """
+    Fetch the ATM implied volatility from the live option chain.
+    Returns IV as a decimal e.g. 0.25 for 25%.
+    """
+    import datetime
+    from iv_solver import implied_volatility
+
+    S = get_spot_price(ticker)
+    r = get_risk_free_rate()
+    calls, puts, _ = get_option_chain(ticker, expiry)
+
+    chain = calls if option_type == 'call' else puts
+
+    chain = chain.copy()
+    chain['dist'] = abs(chain['strike'] - S)
+    atm_row = chain.sort_values('dist').iloc[0]
+
+    price = atm_row['mid'] if atm_row['mid'] > 0 else atm_row['lastPrice']
+
+    expiry_dt = datetime.datetime.strptime(expiry, '%Y-%m-%d')
+    T = max((expiry_dt - datetime.datetime.today()).days / 365, 1/365)
+
+    iv = implied_volatility(price, S, atm_row['strike'], T, r, option_type)
+    return round(iv, 4) if iv else 0.20
