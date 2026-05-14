@@ -1,47 +1,53 @@
 import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
-from greeks import compute_greeks
+from scipy.stats import norm
 
 pio.renderers.default = "browser"
 
+
 def plot_greeks_surface(S=100, r=0.05, sigma=0.20, option_type='call'):
     """
-    3D surface plots for all 5 Greeks across strike and time-to-expiry.
+    3D surface plots for all 5 Greeks — fully vectorised, no loops.
     """
     K_range = np.linspace(0.7 * S, 1.3 * S, 25)
-    T_range = np.linspace(0.01, 2.0, 25)
+    T_range = np.linspace(0.05, 2.0, 25)
 
     K_grid, T_grid = np.meshgrid(K_range, T_range)
 
-    greek_names = ['delta', 'gamma', 'vega', 'theta', 'rho']
-    surfaces = {g: np.zeros_like(K_grid) for g in greek_names}
+    d1 = (np.log(S / K_grid) + (r + 0.5 * sigma**2) * T_grid) / (sigma * np.sqrt(T_grid))
+    d2 = d1 - sigma * np.sqrt(T_grid)
+    pdf_d1 = norm.pdf(d1)
 
-    for i in range(T_grid.shape[0]):
-        for j in range(K_grid.shape[1]):
-            g = compute_greeks(S, K_grid[i,j], T_grid[i,j], r, sigma, option_type)
-            for name in greek_names:
-                surfaces[name][i,j] = g[name] if g[name] is not None else 0.0
+    if option_type == 'call':
+        delta = norm.cdf(d1)
+        rho   = K_grid * T_grid * np.exp(-r * T_grid) * norm.cdf(d2) / 100
+    else:
+        delta = norm.cdf(d1) - 1
+        rho   = -K_grid * T_grid * np.exp(-r * T_grid) * norm.cdf(-d2) / 100
+
+    gamma = pdf_d1 / (S * sigma * np.sqrt(T_grid))
+    vega  = S * pdf_d1 * np.sqrt(T_grid) / 100
+    theta = (-(S * pdf_d1 * sigma) / (2 * np.sqrt(T_grid)) - r * K_grid * np.exp(-r * T_grid) * norm.cdf(d2)) / 365
+
+    surfaces = {
+        'delta': delta, 'gamma': gamma,
+        'vega': vega, 'theta': theta, 'rho': rho
+    }
 
     colors = {
-        'delta': 'Blues',
-        'gamma': 'Greens',
-        'vega':  'Purples',
-        'theta': 'Reds',
-        'rho':   'Oranges'
+        'delta': 'Blues', 'gamma': 'Greens',
+        'vega': 'Purples', 'theta': 'Reds', 'rho': 'Oranges'
     }
 
     figs = {}
-    for name in greek_names:
+    for name, Z in surfaces.items():
         fig = go.Figure(data=[go.Surface(
-            x=K_range,
-            y=T_range,
-            z=surfaces[name],
+            x=K_range, y=T_range, z=Z,
             colorscale=colors[name],
             colorbar=dict(title=name.capitalize()),
             hovertemplate=f'Strike: %{{x:.1f}}<br>T: %{{y:.2f}}y<br>{name.capitalize()}: %{{z:.4f}}<extra></extra>'
         )])
-
         fig.update_layout(
             title=f'{name.capitalize()} Surface — {option_type.capitalize()} | S={S}, σ={sigma}, r={r}',
             scene=dict(
@@ -111,7 +117,7 @@ if __name__ == '__main__':
     fig_2d = plot_greeks_2d(S=100, r=0.05, sigma=0.20, option_type='call', T=0.25)
     fig_2d.show()
 
-    print("Generating 3D Greeks surfaces (5 plots, takes ~5s)...")
+    print("Generating 3D Greeks surfaces...")
     figs_3d = plot_greeks_surface(S=100, r=0.05, sigma=0.20, option_type='call')
     for name, fig in figs_3d.items():
         print(f"  Showing {name}...")
